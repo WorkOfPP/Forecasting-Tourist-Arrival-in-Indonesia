@@ -1,0 +1,230 @@
+---
+---
+---
+
+```{r}
+library(forecast)
+library(tseries) 
+library(vars)
+library(ggplot2)
+library(readxl)
+library(stats)
+library(seasonal)
+```
+
+```{r}
+df <- read_excel("arrival.xlsx")
+df$date <- as.Date(df$date)
+df <- subset(df, select = -c(sars,gfc,oil,geopol))
+tail(df)
+```
+
+```{r}
+df_ts <- ts(df, start = '2000', frequency = 12)
+```
+
+```{r}
+#plot all time series
+plot(df_ts[,'arrival'], ylab="Tourist Arrival", xlab="Year")
+```
+
+```{r}
+plot(df_ts[,'globcci'], ylab="Global Coincidence Index", xlab="Year")
+```
+
+## **2.Seasonally adjusted data**
+
+```{r}
+#plot all time series
+plot(df_ts[,'arrival'], ylab="Tourist Arrival", xlab="Year")
+```
+
+```{r}
+plot(df_ts[,'globcci'], ylab="Global Coincidence Index", xlab="Year")
+```
+
+```{r}
+fit_mult_arrival <- decompose(df_ts[,'arrival'], type="multiplicative")
+plot(fit_mult_arrival)
+```
+
+```{r}
+a <- seas(x = df_ts[,'arrival'], x11 = "")
+autoplot(a)
+```
+
+```{r}
+gc <- seas(x = df_ts[,'globcci'], x11 = "")
+autoplot(gc)
+```
+
+```{r}
+deseasonalized_arrival <- df_ts[,'arrival'] / fit_mult_arrival$seasonal
+# deseasonalized_oil <- df_ts[,'oil'] / fit_mult_oil$seasonal
+# deseasonalized_geopol <- df_ts[,'geopol'] / fit_mult_geopol$seasonal
+```
+
+```{r}
+#Warning: Guerrero's method for selecting a Box-Cox parameter (lambda) is given for strictly positive data.
+#adding 1 to geopol to remove this error
+
+# rows_with_non_positive_values <- df_ts[deseasonalized_geopol <= 0, ]
+# print(rows_with_non_positive_values)
+```
+
+```{r}
+#df_ts[,'geopol'] <- df_ts[,'geopol'] + 1
+# deseasonalized_geopol <- deseasonalized_geopol + 1
+```
+
+```{r}
+seasonally_adjusted_ts <- cbind(df_ts[,'date'],deseasonalized_arrival,df_ts[,'globcci'])
+```
+
+```{r}
+# Rename the first and last columns
+colnames(seasonally_adjusted_ts)[c(1, ncol(seasonally_adjusted_ts))] <- c("date", "deseasonalized_globcci")
+```
+
+```{r}
+#### lambda = 0
+
+arrival_bc <- BoxCox(seasonally_adjusted_ts[,"deseasonalized_arrival"], lambda = 0)
+globcci_bc <- BoxCox(seasonally_adjusted_ts[,"deseasonalized_globcci"], lambda = 0)
+
+#### different lambda
+
+l_arrival <- 0.7999095 #from var_model_lambda_different.rmd
+l_globcci  <- 0.3879421 #from var_model_lambda_different.rmd
+
+arrival_bc_l <- BoxCox(seasonally_adjusted_ts[,"deseasonalized_arrival"], lambda = l_arrival)
+globcci_bc_l <- BoxCox(seasonally_adjusted_ts[,"deseasonalized_globcci"], lambda = l_globcci)
+```
+
+```{r}
+k <- 192 # minimum data length for fitting a model
+n <- length(arrival_bc) # Number of data points
+
+p <- 12 ### Period
+H <- 48 # Forecast Horiz
+```
+
+```{r}
+defaultW <- getOption("warn") 
+options(warn = -1)
+
+st <- tsp(df_ts)[1]+(k-2)/p #  gives the start time in time units,
+
+mape_1 <- matrix(NA,n-k,H)
+mape_2 <- matrix(NA,n-k,H)
+
+mape_3 <- matrix(NA,n-k,H)
+mape_4 <- matrix(NA,n-k,H)
+
+rmse_1 <- matrix(NA,n-k,H)
+rmse_2 <- matrix(NA,n-k,H)
+
+rmse_3 <- matrix(NA,n-k,H)
+rmse_4 <- matrix(NA,n-k,H)
+
+for(i in 1:(n-k))
+{
+  
+  ### One Month rolling forecasting
+  # Expanding Window
+  # arrival
+  train_arrival_1 <- window(arrival_bc, end=st + i/p)  ## Window Length: k+i
+  train_arrival_l_1 <- window(arrival_bc_l, end=st + i/p)  ## Window Length: k+i
+  # x variable: global cci
+  train_gcci_1 <- window(globcci_bc, end=st + i/p)  ## Window Length: k+i
+  train_gcci_l_1 <- window(globcci_bc_l, end=st + i/p)  ## Window Length: k+i
+  
+
+  # Sliding Window - keep the training window of fixed length. 
+  # The training set always consists of k observations.
+  train_arrival_2 <- window(arrival_bc, start=st+(i-k+1)/p, end=st+i/p) ## Window Length: k
+  train_arrival_l_2 <- window(arrival_bc_l, start=st+(i-k+1)/p, end=st+i/p) ## Window Length: k  
+  # x variable: global cci
+  train_gcci_2 <- window(globcci_bc, start=st+(i-k+1)/p, end=st+i/p) ## Window Length: k
+  train_gcci_l_2 <- window(globcci_bc_l, start=st+(i-k+1)/p, end=st+i/p) ## Window Length: k
+
+    
+  #Test
+  test_arrival <- window(arrival_bc, start=st + (i+1)/p, end=st + (i+H)/p) ## Window Length: H
+  test_gcci <- window(globcci_bc, start=st + (i+1)/p, end=st + (i+H)/p) ## Window Length: H
+  
+  test_arrival_l <- window(arrival_bc_l, start=st + (i+1)/p, end=st + (i+H)/p) ## Window Length: H
+  test_gcci_l <- window(globcci_bc_l, start=st + (i+1)/p, end=st + (i+H)/p) ## Window Length: H
+
+
+  ### VAR: LAMBDA 0
+  #### EXPANDING TRAINING WINDOW
+  fit_1 <- VAR(cbind(train_arrival_1, train_gcci_1), p = 4, type = "both", season = 12) #MODEL
+  pred_1  <- predict(fit_1, n.ahead = H)
+  fcast_1 <- ts(pred_1$fcst$train_arrival_1[,1], start = end(train_arrival_1) + 1, frequency = 12)
+  
+  ### VAR: LAMBDA 0
+  #### SLIDING TRAINING WINDOW
+  fit_2 <- VAR(cbind(train_arrival_2, train_gcci_2), p = 4, type = "both", season = 12) #MODEL
+  pred_2  <- predict(fit_2, n.ahead = H)
+  fcast_2 <- ts(pred_2$fcst$train_arrival_2[,1], start = end(train_arrival_2) + 1, frequency = 12)
+
+  ### VAR: LAMBDA different
+  #### EXPANDING TRAINING WINDOW
+  fit_3 <- VAR(cbind(train_arrival_l_1, train_gcci_l_1), p = 4, type = "both", season = 12) #MODEL
+  pred_3  <- predict(fit_3, n.ahead = H)
+  fcast_3 <- ts(pred_3$fcst$train_arrival_l_1[,1], start = end(train_arrival_l_1) + 1, frequency = 12)
+
+  
+  ### VAR: LAMBDA different
+  #### SLIDING TRAINING WINDOW
+  fit_4 <- VAR(cbind(train_arrival_l_2, train_gcci_l_2), p = 4, type = "both", season = 12) #MODEL
+  pred_4  <- predict(fit_4, n.ahead = H)
+  fcast_4 <- ts(pred_4$fcst$train_arrival_l_2[,1], start = end(train_arrival_l_2) + 1, frequency = 12)
+  
+  # Calculate MAE and RMSE for Expanding Window
+  mape_1[i,1:length(test_arrival)] <- (mean(abs(fcast_1 - test_arrival)) / test_arrival) * 100
+  rmse_1[i,1:length(test_arrival)] <- sqrt(mean((fcast_1 - test_arrival)^2))
+
+  # Calculate MAE and RMSE for Sliding Window
+  mape_2[i,1:length(test_arrival)] <- (mean(abs(fcast_2 - test_arrival)) / test_arrival) * 100
+  rmse_2[i,1:length(test_arrival)] <- sqrt(mean((fcast_2 - test_arrival)^2))
+  
+  # Calculate MAE and RMSE for Sliding Window
+  mape_3[i,1:length(test_arrival_l)] <- (mean(abs(fcast_3 - test_arrival_l)) / test_arrival_l) * 100
+  rmse_3[i,1:length(test_arrival_l)] <- sqrt(mean((fcast_3 - test_arrival_l)^2))
+  
+  # Calculate MAE and RMSE for Sliding Window
+  mape_4[i,1:length(test_arrival_l)] <- (mean(abs(fcast_4 - test_arrival_l)) / test_arrival_l) * 100
+  rmse_4[i,1:length(test_arrival_l)] <- sqrt(mean((fcast_4 - test_arrival_l)^2))
+  
+  
+}
+```
+
+```{r}
+plot(1:48, colMeans(mape_1, na.rm=TRUE), type="l", 
+     main = "MAPE vs forecast horizon plots", xlab='Forecast Horizon Plots', ylab='MAPE')
+lines(1:48, colMeans(mape_2,na.rm=TRUE), type="l",col=2)
+legend("topleft",legend=c("VAR - EXPANDING",
+                          "VAR - SLIDING"),
+       col=1:2, lty=1, cex=0.7)
+```
+
+```{r}
+plot(1:48, colMeans(rmse_1, na.rm=TRUE), type="l", 
+     main = "RMSE vs forecast horizon plots", xlab='Forecast Horizon Plots', ylab='RMSE')
+lines(1:48, colMeans(rmse_2,na.rm=TRUE), type="l",col=2)
+legend("topleft",legend=c("VAR LAMBDA 0 - EXPANDING",
+                          "VAR LAMBDA 0 - SLIDING"),
+       col=1:2, lty=1, cex=0.7)
+```
+
+```{r}
+plot(1:48, colMeans(rmse_3, na.rm=TRUE), type="l", 
+     main = "RMSE vs forecast horizon plots", xlab='Forecast Horizon Plots', ylab='RMSE')
+lines(1:48, colMeans(rmse_4,na.rm=TRUE), type="l",col=2)
+legend("topleft",legend=c("VAR LAMBDA DIFFERENT - EXPANDING",
+                          "VAR LAMBDA DIFFERENT - SLIDING"),
+       col=1:2, lty=1, cex=0.7)
+```

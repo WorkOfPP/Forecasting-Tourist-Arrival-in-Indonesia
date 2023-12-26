@@ -1,0 +1,292 @@
+---
+---
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+# Clear working memory
+rm(list=ls())
+
+library(tidyverse)
+library(fpp)
+library(tseries)
+library(ggplot2)
+library(forecast)
+library(plotly)
+library(readxl)
+library(xts)
+library(TSA)
+```
+
+```{r}
+# set directory
+
+# setwd('/Users/preetikaparashar/Desktop/')
+# getwd()
+```
+
+```{r}
+# LOAD THE DATA
+df_arrival <-read_xlsx('arrival.xlsx')
+
+head(df_arrival)
+
+# PLOTTING THE DATA
+plot(df_arrival$date, df_arrival$arrival, type = 'l', xlab = "Date", ylab = "Tourist Arrival", main = "Monthly Tourist Arrival in Indonesia")
+
+
+# CREATING TIME SERIES DATA
+arrival <- ts(df_arrival$arrival, start = c(2000,1), end = c(2019,12), frequency = 12)
+head(arrival)
+
+oil <- ts(df_arrival$oil, start = c(2000,1), end = c(2019,12), frequency = 12)
+oil
+
+geopol <- ts(df_arrival$geopol, start = c(2000,1), end = c(2019,12), frequency = 12)
+geopol
+autoplot(geopol)
+
+globcci <- ts(df_arrival$globcci, start = c(2000,1), end = c(2019,12), frequency = 12)
+globcci
+autoplot(globcci)
+
+autoplot(arrival, main = "Monthly Tourist Arrival in Indonesia, January 1988 - December 2019", 
+         ylab = "Tourist Arrival", xlab = "Year")
+
+seasonplot(arrival, main = "Seasonal Plot of Tourist Arrival Indonesia, 
+           January 1988 - December 2019")
+
+# Correlation at Level
+ts_fit1 <- tslm(arrival ~ oil)
+plot(oil, arrival,main = "Global Oil Price and Tourist Arrival 
+     (Correlation = 0.198)")
+abline(ts_fit1)
+cor(oil,arrival)
+
+ts_fit2 <- tslm(arrival ~ geopol)
+plot(geopol, arrival, main = "Geopolitical Risk and Tourist Arrival
+     (Correlation = -0.358)")
+abline(ts_fit2)
+cor(geopol, arrival)
+
+
+ts_fit3 <- tslm(arrival ~ globcci)
+plot(globcci, arrival,main = "Global Coincidence Index and Tourist Arrival
+     (Correlation = 0.906)")
+abline(ts_fit3)
+cor(globcci, arrival)
+
+# Correlation at % change
+log_arrival <- log(arrival)
+log_oil <- log(oil)
+log_geopol <- log(geopol)
+log_globcci <- log(globcci)
+
+
+ts_fit1 <- tslm(log_arrival ~ log_oil)
+plot(log_oil, log_arrival, main = "Global Oil Price and Tourist Arrival 
+     (Correlation = 0.383)")
+abline(ts_fit1)
+cor(log_oil,log_arrival)
+
+ts_fit3 <- tslm(log_arrival ~ log_globcci)
+plot(log_globcci, log_arrival,main = "Global Coincidence Index and Tourist Arrival")
+abline(ts_fit3)
+cor(log_globcci, log_arrival)
+```
+
+```{r}
+# CHECKING THE NORMALITY
+hist(arrival, main = "Histogram of Foreign Tourists Arrival in Indonesia,
+     January 1988 - December 2019")
+
+shapiro.test(arrival)
+```
+
+```{r}
+# CUT AND SPLIT THE DATA
+training_arrival <- window(arrival,  start = c(2000,1), end = c(2015,12), frequency = 12)
+
+test_arrival <- window(arrival, start= c(2016,1), end = c(2019,12), frequency = 12)
+
+autoplot(training_arrival)
+autoplot(test_arrival)
+
+seasonplot(training_arrival)
+
+# CHECKING THE NORMALITY
+hist(training_arrival, main = "Histogram of Foreign Tourists Arrival in Indonesia,
+     January 2000 - December 2015")
+
+shapiro.test(training_arrival)
+
+# CHECKING STATIONARITY
+tsdisplay(training_arrival, main = "ACF and PACF for Foreign Tourists Arrival in Indonesia,
+     January 2000 - December 2015")
+
+acf(training_arrival)
+pacf(training_arrival)
+kpss.test(training_arrival)
+adf.test(training_arrival)
+
+
+
+```
+
+```{r}
+# BOX COX TRANSFORMATION
+auto_lambda <- BoxCox.lambda(training_arrival)
+auto_lambda
+
+training_arrival_bcauto <- BoxCox(training_arrival,auto_lambda)
+plot(training_arrival_bcauto)
+hist(training_arrival_bcauto)
+shapiro.test(training_arrival_bcauto)
+
+acf(training_arrival_bcauto)
+```
+
+```{r}
+#####################################################CHANGE
+#detrending -> data after boxcox
+training_arrival_bc_detrend <- diff(training_arrival_bcauto, differences=1)
+plot(training_arrival_bc_detrend, type="l")
+kpss.test(training_arrival_bc_detrend, null=c("Level"))
+tsdisplay(training_arrival_bc_detrend)
+
+#deseasonal -> data after boxcox and detrending in first order differencing
+order_sa_1 <- training_arrival_bc_detrend %>% diff(lag=12)
+plot(order_sa_1, main="First Order Differencing of Arrival")
+tsdisplay(order_sa_1)
+kpss.test(order_sa_1)
+adf.test(order_sa_1)
+
+```
+
+```{r}
+training_arrival %>% stl(s.window="periodic") %>% autoplot()
+```
+
+```{r}
+periodogram(training_arrival_bcauto)
+```
+
+```{r}
+
+# Intervention from book
+data(airmiles)
+
+I911 <- 1*(seq(airmiles)==69)
+S911 <- 1*(seq(airmiles)>=69)
+
+plot(airmiles)
+
+air.mPulse <- arimax(log(airmiles),order=c(0,1 ,1),
+                         seasonal=list(order=c(0,1,1), period=12),
+                         xtransf=data.frame(I911, I911),
+                         transfer=list(c(0,0),c(1,0)),
+                         xreg=data.frame(Dec96=1*(seq(airmiles)==12),
+                                        Jan97=1*(seq(airmiles)==13),Dec02=1*(seq(airmiles)==84)),method='ML')
+air.mPulse
+
+plot(ts(I911*(-0.0949) + stats::filter(I911,filter=.8139,method='recursive', side=1)*
+          (-0.2715),frequency=12,start=1996),ylab='9/11 Pulse Effects',
+     type='h')
+
+
+
+air.mStep <- arimax(log(airmiles),order=c(0,1,1),
+                     seasonal=list(order=c(0,1,1), period=12),
+                     xtransf=data.frame(S911, S911),
+                     transfer=list(c(0,0),c(1,0)),
+                     xreg=data.frame(Dec96=1*(seq(airmiles)==12),
+                                     Jan97=1*(seq(airmiles)==13),Dec02=1*(seq(airmiles)==84)),method='ML')
+air.mStep
+
+plot(ts(S911*(4.8559) + stats::filter(S911,filter=-0.0293,method='recursive', side=1)*
+          (-5.2341),frequency=12,start=1996),ylab='9/11 Step Effects', type='h')
+
+```
+
+```{r}
+# Intervensi using sars as xreg
+sars <- 1*(seq(arrival)==40)
+sars
+
+arrival_intervention_1 <- arimax(log(arrival), 
+                        order = c(0,1,1), seasonal = list(order=c(0,1,1), period=12),
+                        xtransf=data.frame(sars, sars,
+                        transfer=list(c(0,0),c(1,0))),
+                        xreg=sars,
+                        method='ML')
+
+arrival_intervention_1
+checkresiduals(arrival_intervention_1)
+
+acf(as.vector(diff(diff(window(log(arrival),end=c(2019,12)),
+12))),lag.max=48)
+pacf(as.vector(diff(diff(window(log(arrival),end=c(2019,12)),
+12))),lag.max=48)
+
+# Plot dari buku
+plot(log(arrival),ylab='Log(arrival)',xlab='Year',
+     main = "Monthly Tourist Arrival in Indonesia, January 2000 - December 2019")
+points(fitted(arrival_intervention_1))
+
+plot(ts(sars * (-0.2690), frequency = 12, start = 2000), 
+     ylab = 'SARS Effects',
+     main = "Intervention Analysis of SARS on Tourist Arrivals in Indonesia",
+     type = 'h')
+
+{1-exp(0.2690)}
+```
+
+```{r}
+# Intervention Pulse Impact of SARS, using training
+training_sars <- 1*(seq(training_arrival)==40)
+training_sars
+
+training_arrival_intervention <- arimax(log(training_arrival), 
+                        order = c(0,1,1), seasonal = list(order=c(0,1,1), period=12),
+                        xtransf=data.frame(sars=1*(seq(training_arrival)==40),
+                                           sars=1*(seq(training_arrival)==40)),
+                        transfer=list(c(0,0),c(1,0)),
+                        xreg=data.frame(Feb06=1*(seq(training_arrival)==74),
+                                        Jan09=1*(seq(training_arrival)==109)),
+                        method='ML')
+
+training_arrival_intervention
+
+checkresiduals(training_arrival_intervention)
+
+acf(as.vector(diff(diff(window(log(arrival),end=c(2019,12)),
+12))),lag.max=48)
+
+# Forecast
+
+
+
+fit_sars <- auto.arima(training_arrival, xreg = training_sars)
+
+fcast_sars <- forecast(fit_sars, h = 1, xreg = training_sars)
+
+
+
+# Plot from book
+plot(log(training_arrival),ylab='Log(arrival)',xlab='Year',
+     main = "Monthly Tourist Arrival in Indonesia, January 2000 - December 2015")
+points(fitted(training_arrival_intervention))
+
+
+plot(ts(sars * (0.636) + stats::filter(sars, filter = 0.3628, method = 'recursive', side = 1) *
+          (-1.0158), frequency = 12, start = 2000), 
+     ylab = 'SARS Effects',
+     main = "Intervention Analysis of SARS on Tourist Arrivals in Indonesia",
+     type = 'h'); abline(h = 0)
+
+{1-exp(0.636-0.362)}
+
+```

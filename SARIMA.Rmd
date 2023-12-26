@@ -1,0 +1,231 @@
+---
+---
+---
+
+```{r}
+library(tseries)
+library(forecast)
+library(TSA)
+library(fpp)
+library(readxl)
+library(dplyr)
+library(ggplot2)
+library(stats)
+library(sae)
+```
+
+```{r}
+tourist_arrival <- read_excel("arrival.xlsx")
+head(tourist_arrival)
+```
+
+Plot the data
+
+```{r}
+ts_arrival <- ts(tourist_arrival$arrival, frequency=12)
+autoplot(ts_arrival)
+```
+
+Train and test split
+
+```{r}
+tourist_arrival$date <- as.Date(tourist_arrival$date)
+
+train_data <- subset(tourist_arrival, date >= as.Date("2000-01-01") & date <= as.Date("2015-12-01"))
+test_data <- subset(tourist_arrival, date >= as.Date("2016-01-01") & date <= as.Date("2019-12-01"))
+
+head(train_data)
+```
+
+```{r}
+# Extracting the year and month for the start argument
+start_train <- as.numeric(format(train_data$date[1], "%Y"))
+start_test <- as.numeric(format(test_data$date[1], "%Y"))
+
+# Create time series for training and testing
+train_ts <- ts(train_data$arrival, frequency = 12, start = c(start_train, 1))
+test_ts <- ts(test_data$arrival, frequency = 12, start = c(start_test, 1))
+
+# Display the time series
+tsdisplay(train_ts)
+```
+
+required to make the data stationary
+
+```{r}
+ndiffs(train_ts)
+```
+
+```{r}
+nsdiffs(train_ts)
+```
+
+##MODEL TRAINING 1. SARIMA model 1 with auto.arima function
+
+```{r}
+sarima_model_1 <- auto.arima(train_ts, trace=TRUE, seasonal=TRUE, lambda="auto")
+```
+
+```{r}
+summary(sarima_model_1)
+```
+
+```{r}
+checkresiduals(sarima_model_1)
+```
+
+p-value greater than 0.05 means there is no autocorrelation in the residuals of the SARIMA model. This indicate that the SARIMA model ARIMA(0,1,1)(1,1,2)[12] has adequately captured the pattern existing in the data.
+
+```{r}
+sarima_model_3 <- auto.arima(train_ts, trace=TRUE, seasonal=TRUE, lambda=0)
+```
+
+```{r}
+summary(sarima_model_3)
+```
+
+```{r}
+checkresiduals(sarima_model_3)
+```
+
+2.  SARIMA model 2 from model identification from ACF and PACF plots.
+
+```{r}
+#Plot ACF and PACF for differenced data (regular and seasonally differencing) to remove trend and seasonality
+train_ts_diff <- diff(diff(train_ts), lag = 12)
+tsdisplay(train_ts_diff)
+```
+
+identify seasonal and non seasonal behavior: Non-seasonal behavior: ACF cut off at lag 1, PACF slowly decay -\> (1,1,0) seasonal behavior: ACF significant at lag 12, PACF significant at lag 12 -\> (1,1,1)
+
+```{r}
+#SARIMA(1,1,0)(1,1,1)[12]
+#Apply box cox transformation first
+transformed_data <- BoxCox(train_ts, lambda=0.7649068)
+sarima_model_2 <- Arima(transformed_data, order = c(1, 1, 0), 
+                          seasonal = list(order = c(1, 1, 1), period = 12))
+summary(sarima_model_2)
+```
+
+```{r}
+checkresiduals(sarima_model_2)
+```
+
+p-value greater than 0.05 means there is no significant autocorrelation in the residuals of the SARIMA model. This indicate that the SARIMA model ARIMA(1,1,0)(1,1,1)[12] has adequately captured the pattern existing in the data.
+
+```{r}
+#SARIMA(1,1,0)(1,1,1)[12]
+#Apply box cox transformation first
+transformed_data_2 <- BoxCox(train_ts, lambda=0)
+sarima_model_4 <- Arima(transformed_data_2, order = c(1, 1, 0), 
+                          seasonal = list(order = c(1, 1, 1), period = 12))
+summary(sarima_model_4)
+```
+
+```{r}
+checkresiduals(sarima_model_4)
+```
+
+*Forecast* 1. Forecast sarima model 1
+
+```{r}
+forecast_sarima_1 <- forecast(sarima_model_1, h=48)
+
+# Combine forecast and test data
+combined_data <- c(as.vector(train_ts), as.vector(forecast_sarima_1$mean))
+
+# Create a time series for combined data with appropriate dates
+combined_dates <- seq(as.Date("2000-01-01"), length.out = length(combined_data), by = "months")
+combined_ts <- ts(combined_data, frequency = 12, start = c(as.POSIXlt(combined_dates[1])$year + 1900, as.POSIXlt(combined_dates[1])$mon + 1))
+
+# Plot
+autoplot(combined_ts) +
+  autolayer(forecast_sarima_1, series = "Forecast") +
+  autolayer(test_ts, series = "Actual")
+```
+
+```{r}
+accuracy(forecast_sarima_1, test_data$arrival)
+```
+
+```{r}
+mse <- mean(forecast_sarima_1$residuals^2)
+print(mse)
+```
+
+```{r}
+forecast_sarima_3 <- forecast(sarima_model_3, h=48)
+
+# Combine forecast and test data
+combined_data <- c(as.vector(train_ts), as.vector(forecast_sarima_3$mean))
+
+# Create a time series for combined data with appropriate dates
+combined_dates <- seq(as.Date("2000-01-01"), length.out = length(combined_data), by = "months")
+combined_ts <- ts(combined_data, frequency = 12, start = c(as.POSIXlt(combined_dates[1])$year + 1900, as.POSIXlt(combined_dates[1])$mon + 1))
+
+# Plot
+autoplot(combined_ts) +
+  autolayer(forecast_sarima_3, series = "Forecast") +
+  autolayer(test_ts, series = "Actual")
+```
+
+```{r}
+accuracy(forecast_sarima_3, test_data$arrival)
+```
+
+2.  Forecast sarima model 2
+
+```{r}
+forecast_sarima_2 <- forecast(sarima_model_2, h=48)
+
+lambda <- 0.7649068
+forecast_inv <- bxcx(forecast_sarima_2$mean, lambda=lambda, InverseQ=TRUE)
+
+# Combine forecast and test data
+combined_data <- c(as.vector(train_ts), as.vector(forecast_inv))
+
+# Create a time series for combined data with appropriate dates
+combined_dates <- seq(as.Date("2000-01-01"), length.out = length(combined_data), by = "months")
+combined_ts <- ts(combined_data, frequency = 12, start = c(as.POSIXlt(combined_dates[1])$year + 1900, as.POSIXlt(combined_dates[1])$mon + 1))
+
+# Plot
+autoplot(combined_ts) +
+  autolayer(forecast_inv, series = "Forecast") +
+  autolayer(test_ts, series = "Actual")
+```
+
+```{r}
+#TEST SET
+accuracy(forecast_inv, test_data$arrival)
+```
+
+```{r}
+#TRAIN SET
+inv_fitted <- bxcx(sarima_model_2$fitted, lambda=lambda, InverseQ=TRUE)
+accuracy(inv_fitted, train_data$arrival)
+```
+
+Forecast sarima model 4
+
+```{r}
+forecast_sarima_4 <- forecast(sarima_model_4, h=48)
+
+lambda <- 0
+forecast_inv <- bxcx(forecast_sarima_4$mean, lambda=lambda, InverseQ=TRUE)
+
+# Combine forecast and test data
+combined_data <- c(as.vector(train_ts), as.vector(forecast_inv))
+
+# Create a time series for combined data with appropriate dates
+combined_dates <- seq(as.Date("2000-01-01"), length.out = length(combined_data), by = "months")
+combined_ts <- ts(combined_data, frequency = 12, start = c(as.POSIXlt(combined_dates[1])$year + 1900, as.POSIXlt(combined_dates[1])$mon + 1))
+
+# Plot
+autoplot(combined_ts) +
+  autolayer(forecast_inv, series = "Forecast") +
+  autolayer(test_ts, series = "Actual")
+```
+
+```{r}
+accuracy(forecast_inv, test_data$arrival)
+```

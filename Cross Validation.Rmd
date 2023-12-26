@@ -1,0 +1,464 @@
+---
+---
+---
+
+```{r}
+# Clear working memory
+rm(list=ls())
+```
+
+```{r}
+library(tidyverse)
+library(fpp)
+library(tseries)
+library(ggplot2)
+library(forecast)
+library(plotly)
+library(readxl)
+library(xts)
+library(TSA)
+```
+
+```{r}
+# LOAD THE DATA
+df_arrival <-read_xlsx('arrival.xlsx')
+
+head(df_arrival)
+```
+
+```{r}
+# CREATING TIME SERIES DATA
+arrival <- ts(df_arrival$arrival, start = c(2000,1), frequency = 12)
+head(arrival)
+```
+
+```{r}
+# PLOTTING
+autoplot(arrival, main = "Monthly Tourist Arrival in Indonesia, January 2000 - December 2019", 
+         ylab = "Tourist Arrival", xlab = "Year")
+```
+
+```{r}
+seasonplot(arrival, main = "Seasonal Plot of Tourist Arrival Indonesia, 
+           January 2000 - December 2019")
+```
+
+```{r}
+# CHECKING THE NORMALITY
+hist(arrival, main = "Histogram of Foreign Tourists Arrival in Indonesia,
+     January 2000 - December 2019")
+```
+
+```{r}
+shapiro.test(arrival)
+```
+
+```{r}
+# CUT AND SPLIT THE DATA
+training_arrival <- window(arrival,  start = c(2000,1), end = c(2015,12))
+
+test_arrival <- window(arrival, start= c(2016,1), end = c(2019,12))
+
+autoplot(training_arrival)
+```
+
+```{r}
+autoplot(test_arrival)
+```
+
+```{r}
+seasonplot(training_arrival)
+```
+
+```{r}
+# CHECKING THE NORMALITY
+hist(training_arrival, main = "Histogram of Foreign Tourists Arrival in Indonesia,
+     January 2000 - December 2015")
+```
+
+```{r}
+shapiro.test(training_arrival)
+```
+
+```{r}
+# CHECKING STATIONARITY
+tsdisplay(training_arrival, main = "ACF and PACF for Foreign Tourists Arrival in Indonesia,
+     January 2000 - December 2015")
+```
+
+```{r}
+acf(training_arrival)
+```
+
+```{r}
+pacf(training_arrival)
+```
+
+```{r}
+kpss.test(training_arrival)
+```
+
+```{r}
+adf.test(training_arrival)
+```
+
+```{r}
+# BOX COX TRANSFORMATION
+auto_lambda <- BoxCox.lambda(training_arrival)
+auto_lambda
+```
+
+```{r}
+training_arrival_bcauto <- BoxCox(training_arrival,auto_lambda)
+plot(training_arrival_bcauto)
+```
+
+```{r}
+hist(training_arrival_bcauto)
+```
+
+```{r}
+shapiro.test(training_arrival_bcauto)
+```
+
+```{r}
+kpss.test(training_arrival_bcauto, null=c("Level"))
+```
+
+```{r}
+acf(training_arrival_bcauto)
+```
+
+```{r}
+#BENCHMARK ETS MODEL - LAMBDA 0
+
+#model
+model_ets_1 <- ets(training_arrival, model="ZZZ", lambda = 0)
+fcast_ets_1 <- forecast(model_ets_1, h=48)
+summary(model_ets_1)
+```
+
+```{r}
+aicc_ets_1 <- model_ets_1$aicc
+bic_ets_1 <- model_ets_1$bic
+checkresiduals(model_ets_1)
+```
+
+```{r}
+#plot
+plot(model_ets_1$fitted, type = "l", col = "blue", lwd = 2, xlab = "Time", ylab = "Values", main = "Fitted Plot")
+lines(training_arrival, type = "l", col = "red", lwd = 2)
+grid()
+legend("topleft", legend = c("Fitted", "Actual"), col = c("blue", "red"), lty = 1, lwd = 2)
+```
+
+```{r}
+#accuracy forecast
+accuracy_ets_1 <- accuracy(fcast_ets_1, test_arrival)
+accuracy_ets_1
+```
+
+```{r}
+rmse_ets_1 <- accuracy_ets_1[4]
+mape_ets_1 <- accuracy_ets_1[10]
+mse_ets_1 <- mean(abs((test_arrival - fcast_ets_1$mean))^2)
+
+#plot
+plot(fcast_ets_1, type = "l", col = "blue", lwd = 2, xlab = "Time", ylab = "Values", main = "Forecast Plot")
+lines(test_arrival, type = "l", col = "red", lwd = 2)
+grid()
+legend("topleft", legend = c("Forecast", "Test Arrival"), col = c("blue", "red"), lty = 1, lwd = 2)
+```
+
+```{r}
+#BENCHMARK ETS MODEL - LAMBDA auto
+
+#model
+model_ets_2 <- ets(training_arrival, model="ZZZ", lambda = "auto")
+fcast_ets_2 <- forecast(model_ets_2, h=48)
+summary(model_ets_2)
+```
+
+```{r}
+aicc_ets_2 <- model_ets_2$aicc
+bic_ets_2 <- model_ets_2$bic
+checkresiduals(model_ets_2)
+```
+
+```{r}
+#plot
+plot(model_ets_2$fitted, type = "l", col = "blue", lwd = 2, xlab = "Time", ylab = "Values", main = "Fitted Plot")
+lines(training_arrival, type = "l", col = "red", lwd = 2)
+grid()
+legend("topleft", legend = c("Fitted", "Actual"), col = c("blue", "red"), lty = 1, lwd = 2)
+```
+
+```{r}
+#accuracy forecast
+accuracy_ets_2 <- accuracy(fcast_ets_2, test_arrival)
+accuracy_ets_2
+```
+
+```{r}
+rmse_ets_2 <- accuracy_ets_2[4]
+mape_ets_2 <- accuracy_ets_2[10]
+mse_ets_2 <- mean(abs((test_arrival - fcast_ets_2$mean))^2)
+
+#plot
+plot(fcast_ets_2, type = "l", col = "blue", lwd = 2, xlab = "Time", ylab = "Values", main = "Forecast Plot")
+lines(test_arrival, type = "l", col = "red", lwd = 2)
+grid()
+legend("topleft", legend = c("Forecast", "Test Arrival"), col = c("blue", "red"), lty = 1, lwd = 2)
+```
+
+```{r}
+#BENCHMARK ARIMA - LAMBDA 0
+
+#model
+model_arima_1 <- auto.arima(training_arrival, seasonal=TRUE, lambda = 0)
+fcast_arima_1 <- forecast(model_arima_1, h=48)
+summary(model_arima_1)
+```
+
+```{r}
+aicc_arima_1 <- model_arima_1$aicc
+bic_arima_1 <- model_arima_1$bic
+checkresiduals(model_arima_1)
+```
+
+```{r}
+#BENCHMARK ARIMA - LAMBDA AUTO
+
+#model
+model_arima_2 <- auto.arima(training_arrival, seasonal=TRUE, lambda = "auto")
+fcast_arima_1 <- forecast(model_arima_1, h=48)
+summary(model_arima_1)
+```
+
+```{r}
+aicc_arima_1 <- model_arima_1$aicc
+bic_arima_1 <- model_arima_1$bic
+checkresiduals(model_arima_1)
+```
+
+```{r}
+#BENCHMARK ARIMA - LAMBDA 0
+
+#model
+model_arima_3 <- Arima(training_arrival,order=c(1,1,0), seasonal=list(order=c(1,1,1), lambda = 0))
+fcast_arima_3 <- forecast(model_arima_3, h=48)
+summary(model_arima_3)
+```
+
+```{r}
+aicc_arima_3 <- model_arima_3$aicc
+bic_arima_3 <- model_arima_3$bic
+checkresiduals(model_arima_3)
+```
+
+```{r}
+#BENCHMARK ARIMA - LAMBDA auto
+
+#model
+model_arima_4 <- Arima(training_arrival,order=c(1,1,0), seasonal=list(order=c(1,1,1), lambda = "auto"))
+fcast_arima_4 <- forecast(model_arima_4, h=48)
+summary(model_arima_4)
+```
+
+```{r}
+aicc_arima_4 <- model_arima_4$aicc
+bic_arima_4 <- model_arima_4$bic
+checkresiduals(model_arima_4)
+```
+
+**In this section you will apply the time-series cross validation method to train and test various models. Use the following values when training and testing the models:**
+
+**• Set the minimum number of samples required to train the model to 160 (i.e., this is the minimum number of samples in the sliding window and the initial number of samples in the expanding window method.)**
+
+**• Set the number the forecast horizon, ℎ, to 1 year (i.e., 12 months.)**
+
+**• Recall that the period, 𝑝, is equal to 12 months**
+
+**• Use a single observation incrementation in each iteration (i.e., shift the training set forward by 1 observation.)**
+
+**• Note: You are expected to have 80 iterations of cross validation**
+
+```{r}
+k <- 192 # minimum data length for fitting a model
+n <- length(arrival) # Number of data points
+
+p <- 12 ### Period
+H <- 48 # Forecast Horiz
+```
+
+```{r}
+defaultW <- getOption("warn") 
+options(warn = -1)
+
+st <- tsp(arrival)[1]+(k-2)/p #  gives the start time in time units,
+
+mape_1 <- matrix(NA,n-k,H)
+mape_2 <- matrix(NA,n-k,H)
+mape_3 <- matrix(NA,n-k,H)
+mape_4 <- matrix(NA,n-k,H)
+mape_5 <- matrix(NA,n-k,H)
+mape_6 <- matrix(NA,n-k,H)
+
+rmse_1 <- matrix(NA,n-k,H)
+rmse_2 <- matrix(NA,n-k,H)
+rmse_3 <- matrix(NA,n-k,H)
+rmse_4 <- matrix(NA,n-k,H)
+rmse_5 <- matrix(NA,n-k,H)
+rmse_6 <- matrix(NA,n-k,H)
+
+for(i in 1:(n-k))
+{
+  
+  ### One Month rolling forecasting
+  # Expanding Window 
+  train_1 <- window(arrival, end=st + i/p)  ## Window Length: k+i
+  
+  # Sliding Window - keep the training window of fixed length. 
+  # The training set always consists of k observations.
+  train_2 <- window(arrival, start=st+(i-k+1)/p, end=st+i/p) ## Window Length: k
+  
+  #Test
+  test <- window(arrival, start=st + (i+1)/p, end=st + (i+H)/p) ## Window Length: H
+
+  
+  ### ETS: LAMBDA 0
+  #### EXPANDING TRAINING WINDOW
+  fit_1 <- ets(train_1, lambda = 0) #MODEL
+  fcast_1 <- forecast(fit_1, h=H) #FORECAST
+  mape_1[i,1:length(test)] <- (mean(abs(fcast_1[['mean']] - test)) / test) * 100
+#  mae_1[i,1:length(test)] <- abs(fcast_1[['mean']]-test) #MAE
+  rmse_1[i,1:length(test)] <- sqrt(mean((fcast_1[['mean']]-test)^2)) #RMSE
+  
+  ### ETS: LAMBDA 0
+  #### SLIDING TRAINING WINDOW
+  fit_2 <- ets(train_2, lambda = 0) #MODEL
+  fcast_2 <- forecast(fit_2, h=H) #FORECAST
+  mape_2[i,1:length(test)] <- (mean(abs(fcast_2[['mean']] - test)) / test) * 100
+#  mae_2[i,1:length(test)] <- abs(fcast_2[['mean']]-test) #MAE
+  rmse_2[i,1:length(test)] <- sqrt(mean((fcast_2[['mean']]-test)^2)) #RMSE
+
+  ### ARIMA(0,1,1)(1,1,2)[12] LAMBDA AUTO
+  #### EXPANDING TRAINING WINDOW
+  fit_3 <- Arima(train_1, order=c(0,1,1), seasonal=list(order=c(1,1,2)), lambda = "auto") #MODEL
+  fcast_3 <- forecast(fit_3, h=H)
+  mape_3[i,1:length(test)] <- (mean(abs(fcast_3[['mean']] - test)) / test) * 100
+#  mae_3[i,1:length(test)] <- abs(fcast_3[['mean']]-test)
+  rmse_3[i,1:length(test)] <- sqrt(mean((fcast_3[['mean']]-test)^2)) #RMSE
+  
+  ### ARIMA(0,1,1)(1,1,2)[12] LAMBDA AUTO
+  #### SLIDING TRAINING WINDOW
+  fit_4 <- Arima(train_2, order=c(0,1,1), seasonal=list(order=c(1,1,2)), lambda = "auto")  #MODEL
+  fcast_4 <- forecast(fit_4, h=H) #FORECAST
+  mape_4[i,1:length(test)] <- (mean(abs(fcast_4[['mean']] - test)) / test) * 100
+#  mae_4[i,1:length(test)] <- abs(fcast_4[['mean']]-test) #MAE
+  rmse_4[i,1:length(test)] <- sqrt(mean((fcast_4[['mean']]-test)^2)) #RMSE
+  
+#   ### ARIMA(2,1,2)(1,1,2)[12] LAMBDA 0
+#   #### EXPANDING TRAINING WINDOW
+#   fit_5 <- Arima(train_1, order=c(2,1,2), seasonal=list(order=c(1,1,2)), lambda = 0) #MODEL
+#   fcast_5 <- forecast(fit_5, h=H) #FORECAST
+#   mape_5[i,1:length(test)] <- (mean(abs(fcast_5[['mean']] - test)) / test) * 100
+# #  mae_5[i,1:length(test)] <- abs(fcast_5[['mean']]-test) #MAE
+#   rmse_5[i,1:length(test)] <- sqrt(mean((fcast_5[['mean']]-test)^2)) #RMSE
+#   
+#   ### ARIMA(2,1,2)(1,1,2)[12] LAMBDA 0
+#   #### SLIDING TRAINING WINDOW
+#   fit_6 <- Arima(train_2, order=c(2,1,2), seasonal=list(order=c(1,1,2)), lambda = 0)  #MODEL
+#   fcast_6 <- forecast(fit_6, h=H) #FORECAST
+#   mape_6[i,1:length(test)] <- (mean(abs(fcast_6[['mean']] - test)) / test) * 100
+# #  mae_6[i,1:length(test)] <- abs(fcast_6[['mean']]-test) #MAE
+#   rmse_6[i,1:length(test)] <- sqrt(mean((fcast_6[['mean']]-test)^2)) #RMSE
+#     
+}
+```
+
+```{r}
+plot(1:48, colMeans(mape_1, na.rm=TRUE), type="l", 
+     main = "MAPE vs forecast horizon plots", xlab='Forecast Horizon Plots', ylab='MAPE')
+lines(1:48, colMeans(mape_2,na.rm=TRUE), type="l",col=2)
+legend("topleft",legend=c("ETS: 0 - EXPANDING", "ETS: 0 - SLIDING"), col=1:6, lty=1, cex=0.7)
+```
+
+```{r}
+plot(1:48, colMeans(mape_3, na.rm=TRUE), type="l", main = "MAPE vs forecast horizon plots", xlab='Forecast Horizon Plots', ylab='MAPE')
+lines(1:48, colMeans(mape_4,na.rm=TRUE), type="l",col=2)
+legend("topleft",legend=c("ARIMA(0,1,1)(1,1,2)[12] LAMBDA AUTO - EXPANDING",
+                          "ARIMA(0,1,1)(1,1,2)[12] LAMBDA AUTO - SLIDING"),
+       col=1:6, lty=1, cex=0.7)
+```
+
+```{r}
+# plot(1:48, colMeans(mape_5, na.rm=TRUE), type="l", main = "MAPE vs forecast horizon plots", xlab='Forecast Horizon Plots', ylab='MAPE')
+# lines(1:48, colMeans(mape_6,na.rm=TRUE), type="l",col=2)
+# legend("topleft",legend=c("ARIMA(2,1,2)(1,1,2)[12] LAMBDA 0 - EXPANDING",
+#                           "ARIMA(2,1,2)(1,1,2)[12] LAMBDA 0 - SLIDING"),
+#        col=1:6, lty=1, cex=0.7)
+```
+
+```{r}
+plot(1:48, colMeans(mape_1, na.rm=TRUE), type="l", 
+     main = "MAE vs forecast horizon plots", xlab='Forecast Horizon Plots', ylab='MAE')
+lines(1:48, colMeans(mape_2,na.rm=TRUE), type="l",col=2)
+lines(1:48, colMeans(mape_3,na.rm=TRUE), type="l",col=3)
+lines(1:48, colMeans(mape_4,na.rm=TRUE), type="l",col=4)
+# lines(1:48, colMeans(mape_5,na.rm=TRUE), type="l",col=5)
+# lines(1:48, colMeans(mape_6,na.rm=TRUE), type="l",col=6)
+legend("topleft",legend=c("ETS: 0 - EXPANDING",
+                          "ETS: 0 - SLIDING",
+                          "ARIMA(0,1,1)(1,1,2)[12] LAMBDA AUTO - EXPANDING",
+                          "ARIMA(0,1,1)(1,1,2)[12] LAMBDA AUTO - SLIDING"
+                          # "ARIMA(2,1,2)(1,1,2)[12] LAMBDA 0 - EXPANDING",
+                          # "ARIMA(2,1,2)(1,1,2)[12] LAMBDA 0 - SLIDING"
+                          ),
+       col=1:4, lty=1, cex=0.7)
+```
+
+```{r}
+plot(1:48, colMeans(rmse_1,na.rm=TRUE), type="l", 
+     main = "RMSE vs forecast horizon plots", xlab='Forecast Horizon Plots', ylab='RMSE')
+lines(1:48, colMeans(rmse_2,na.rm=TRUE), type="l",col=2)
+lines(1:48, colMeans(rmse_3,na.rm=TRUE), type="l",col=3)
+lines(1:48, colMeans(rmse_4,na.rm=TRUE), type="l",col=4)
+# lines(1:48, colMeans(rmse_5,na.rm=TRUE), type="l",col=5)
+# lines(1:48, colMeans(rmse_6,na.rm=TRUE), type="l",col=6)
+legend("topleft",legend=c("ETS: 0 - EXPANDING",
+                          "ETS: 0 - SLIDING",
+                          "ARIMA(0,1,1)(1,1,2)[12] LAMBDA AUTO - EXPANDING",
+                          "ARIMA(0,1,1)(1,1,2)[12] LAMBDA AUTO - SLIDING"
+                          # "ARIMA(2,1,2)(1,1,2)[12] LAMBDA 0 - EXPANDING",
+                          # "ARIMA(2,1,2)(1,1,2)[12] LAMBDA 0 - SLIDING"
+                          ),
+       col=1:4, lty=1, cex=0.7)
+```
+
+```{r}
+plot(1:48, colMeans(rmse_1,na.rm=TRUE), type="l", 
+     main = "RMSE vs forecast horizon plots", xlab='Forecast Horizon Plots', ylab='RMSE')
+lines(1:48, colMeans(rmse_2,na.rm=TRUE), type="l",col=2)
+legend("topleft",legend=c("ETS: 0 - EXPANDING",
+                          "ETS: 0 - SLIDING"),
+       col=1:6, lty=1, cex=0.7)
+```
+
+```{r}
+plot(1:48, colMeans(rmse_3,na.rm=TRUE), type="l", 
+     main = "RMSE vs forecast horizon plots", xlab='Forecast Horizon Plots', ylab='RMSE')
+lines(1:48, colMeans(rmse_4,na.rm=TRUE), type="l",col=2)
+legend("topleft",legend=c("ARIMA(0,1,1)(1,1,2)[12] LAMBDA AUTO - EXPANDING",
+                          "ARIMA(0,1,1)(1,1,2)[12] LAMBDA AUTO - SLIDING"),
+       col=1:6, lty=1, cex=0.7)
+```
+
+```{r}
+# plot(1:48, colMeans(rmse_5,na.rm=TRUE), type="l", 
+#      main = "RMSE vs forecast horizon plots", xlab='Forecast Horizon Plots', ylab='RMSE')
+# lines(1:48, colMeans(rmse_6,na.rm=TRUE), type="l",col=2)
+# legend("topleft",legend=c("ARIMA(2,1,2)(1,1,2)[12] LAMBDA 0 - EXPANDING",
+#                           "ARIMA(2,1,2)(1,1,2)[12] LAMBDA 0 - SLIDING"),
+#        col=1:6, lty=1, cex=0.7)
+```

@@ -1,0 +1,279 @@
+---
+---
+---
+
+**globcci ➔ Independent variable**
+
+**arrival➔ Dependent variable**
+
+**Data: 01/2000 to 12/2019**
+
+-   Train Data: 01/2000 -12/2015
+
+-   Test Data: 01/2016 - 12/2019
+
+**Data Preprocessing (detrended, removed variance):**
+
+-   Lambda=0
+
+```{r}
+library(forecast)
+library(tseries) 
+library(vars)
+library(ggplot2)
+library(readxl)
+library(stats)
+library(seasonal)
+```
+
+# 1.Load Data
+
+```{r}
+df <- read_excel("arrival.xlsx")
+df$date <- as.Date(df$date)
+df <- subset(df, select = -c(sars,gfc,oil,geopol))
+head(df)
+```
+
+```{r}
+df_ts <- ts(df, start = '2000', frequency = 12)
+```
+
+## 2.Seasonally adjusted data
+
+```{r}
+#plot all time series
+plot(df_ts[,'arrival'], ylab="Tourist Arrival", xlab="Year")
+plot(df_ts[,'globcci'], ylab="Global Coincidence Index", xlab="Year")
+```
+
+```{r}
+fit_mult_arrival <- decompose(df_ts[,'arrival'], type="multiplicative")
+plot(fit_mult_arrival)
+
+# fit_mult_oil <- decompose(df_ts[,'oil'], type="multiplicative")
+# plot(fit_mult_oil)
+# 
+# fit_mult_geopol <- decompose(df_ts[,'geopol'], type="multiplicative")
+# plot(fit_mult_geopol)
+
+# fit_mult_globcci <- decompose(df_ts[,'globcci'], type="multiplicative")
+# plot(fit_mult_globcci)
+```
+
+```{r}
+a <- seas(x = df_ts[,'arrival'], x11 = "")
+autoplot(a)
+
+# o <- seas(x = df_ts[,'oil'], x11 = "")
+# autoplot(o)
+# 
+# gp <- seas(x = df_ts[,'geopol'], x11 = "")
+# autoplot(gp)
+
+gc <- seas(x = df_ts[,'globcci'], x11 = "")
+autoplot(gc)
+```
+
+```{r}
+deseasonalized_arrival <- df_ts[,'arrival'] / fit_mult_arrival$seasonal
+# deseasonalized_oil <- df_ts[,'oil'] / fit_mult_oil$seasonal
+# deseasonalized_geopol <- df_ts[,'geopol'] / fit_mult_geopol$seasonal
+```
+
+```{r}
+#Warning: Guerrero's method for selecting a Box-Cox parameter (lambda) is given for strictly positive data.
+#adding 1 to geopol to remove this error
+
+# rows_with_non_positive_values <- df_ts[deseasonalized_geopol <= 0, ]
+# print(rows_with_non_positive_values)
+```
+
+```{r}
+#df_ts[,'geopol'] <- df_ts[,'geopol'] + 1
+# deseasonalized_geopol <- deseasonalized_geopol + 1
+```
+
+```{r}
+seasonally_adjusted_ts <- cbind(df_ts[,'date'],deseasonalized_arrival,df_ts[,'globcci'])
+```
+
+```{r}
+# Rename the first and last columns
+colnames(seasonally_adjusted_ts)[c(1, ncol(seasonally_adjusted_ts))] <- c("date", "deseasonalized_globcci")
+```
+
+## 3.Train-test split
+
+```{r}
+train <- window(seasonally_adjusted_ts, start = c(2000, 1), end = c(2015, 12))
+test <- window(seasonally_adjusted_ts, start = c(2016, 1), end = c(2019, 12))
+```
+
+## 4.Lambda values for each component time series
+
+```{r}
+# l_arrival <- BoxCox.lambda(train[,'deseasonalized_arrival'])
+# l_arrival
+# 
+# # l_oil <- BoxCox.lambda(train[,'deseasonalized_oil'])
+# # l_oil
+# # 
+# # l_geopol <- BoxCox.lambda(train[,'deseasonalized_geopol'])
+# # l_geopol
+# 
+# l_globcci <- BoxCox.lambda(train[,'deseasonalized_globcci'])
+# l_globcci
+```
+
+```{r}
+arrival_bc <- BoxCox(train[,"deseasonalized_arrival"], lambda = 0)
+# oil_bc <- BoxCox(train[,"deseasonalized_oil"], lambda = l_oil)
+# geopol_bc <- BoxCox(train[,"deseasonalized_geopol"], lambda = l_geopol)
+globcci_bc <- BoxCox(train[,"deseasonalized_globcci"], lambda = 0)
+```
+
+```{r}
+# # Correlation calculation
+# a <- cbind(train[,'date'],arrival_bc,oil_bc,geopol_bc,globcci_bc)
+# cor_matrix <- cor(a[, c("arrival_bc", "oil_bc", "geopol_bc", "globcci_bc")])
+# 
+# # Print the correlation matrix
+# print(cor_matrix)
+```
+
+```{r}
+#except for geopol all other are non-stationary time series as p-value >0.05
+adf.test(arrival_bc)
+# adf.test(oil_bc)
+# adf.test(geopol_bc)
+adf.test(globcci_bc)
+```
+
+```{r}
+#test data boxcox transformation
+arrival_bc_test <- BoxCox(test[,"deseasonalized_arrival"], lambda = 0)
+# oil_bc_test <- BoxCox(test[,"deseasonalized_oil"], lambda = l_oil)
+# geopol_bc_test <- BoxCox(test[,"deseasonalized_geopol"], lambda = l_geopol)
+globcci_bc_test <- BoxCox(test[,"deseasonalized_globcci"], lambda = 0)
+```
+
+## 4.VAR()
+
+```{r}
+VARselect(cbind(arrival_bc, globcci_bc), lag.max = 10)$selection
+```
+
+Explored models of order 3,4 as below.
+
+### 4.1 P=3,4
+
+```{r}
+var <- VAR(cbind(arrival_bc, globcci_bc), p = 4, type = "both", season = 12)
+#coef(var)
+```
+
+```{r}
+summary(var)
+```
+
+residuals have very small correlation.
+
+```{r}
+serial.test(var,lags.pt = 10, type = "PT.asymptotic")
+```
+
+**p-value \> 0.05 ==\> accept null hypothesis ==\> no serial correlation in the residuals**
+
+```{r}
+acf(resid(var)[, 1], main='arrival')
+# acf(resid(var)[, 2], main='oil')
+# acf(resid(var)[, 3], main='geopol')
+acf(resid(var)[, 2], main='globcci')
+```
+
+```{r}
+acf(residuals(var))
+```
+
+```{r}
+#checkresiduals(var)
+#Error in ggtsdisplay(residuals, plot.type = "histogram", main = main,  : 
+#  ggtsdisplay is only for univariate time series
+```
+
+```{r}
+pred <- predict(var, n.ahead = length(test[,'deseasonalized_arrival']))
+
+# oil.pred <- ts(pred$fcst$oil_bc[,1], st = c(2016, 1), fr = 12)
+# geopol.pred <- ts(pred$fcst$geopol_bc[,1], st = c(2016, 1), fr = 12)
+globcci.pred <- ts(pred$fcst$globcci_bc[,1], st = c(2016, 1), fr = 12)
+arrival.pred <- ts(pred$fcst$arrival_bc[,1], st = c(2016, 1), fr = 12)
+```
+
+```{r}
+ts.plot(cbind(window(arrival_bc, start = c(2000)), arrival.pred), lty = 1:2)
+# ts.plot(cbind(window(oil_bc, start = c(2000)), oil.pred), lty = 1:2)
+# ts.plot(cbind(window(geopol_bc, start = c(2000)), geopol.pred), lty = 1:2)
+ts.plot(cbind(window(globcci_bc, start = c(2000)), globcci.pred), lty = 1:2)
+```
+
+```{r}
+plot <- autoplot(window(arrival_bc, start = c(2000))) + 
+  autolayer(arrival_bc_test, series = "Test Data") + 
+  autolayer(arrival.pred, series = "Forecast") + 
+  xlab("Year") + 
+  ylab("Seasonally Adjusted and Box-Cox Transformed Arrival") + 
+  ggtitle("VAR Forecast")
+```
+
+```{r}
+plot
+```
+
+```{r}
+# generated forecast by model
+forecast(var) %>%
+  autoplot() + xlab("Year")
+```
+
+```{r}
+accuracy(arrival.pred, arrival_bc_test)
+```
+
+```{r}
+
+residuals_list <- as.data.frame(residuals(var))
+p_values <- numeric()
+
+for (i in 1:ncol(residuals_list)) {
+  ljung_box_test <- Box.test(residuals_list[, i], lag = 10, type = "Ljung-Box")
+  p_values <- c(p_values, ljung_box_test$p.value)
+}
+
+# Print or analyze the p-values
+print(p_values)
+```
+
+```{r}
+# aicc <- AIC(var, nobs = length(cbind(arrival_bc, globcci_bc)), type = "AICc")
+```
+
+```{r}
+# accuracy((BoxCox(test[,'arrival'], lambda = l)), arrival.pred)
+# # Calculate model performance metrics 
+# mse <- mean((log(test_data_ts[,'arrival']) - arrival.pred)^2)
+# rmse <- sqrt(mse)
+# mae <- mean(abs(log(test_data_ts[,'arrival']) - arrival.pred))
+# 
+# # Print the performance metrics
+# cat("Mean Squared Error (MSE):", mse, "\n")
+# cat("Root Mean Squared Error (RMSE):", rmse, "\n")
+# cat("Mean Absolute Error (MAE):", mae, "\n")
+
+# mape <- mean(abs((BoxCox(test[,'arrival'], lambda = l) - arrival.pred) / BoxCox(test[,'arrival'], lambda = l))) * 100
+# cat("Mean Absolute Percentage Error (MAPE):", mape, "%\n")
+
+# library(Metrics)
+# mape(BoxCox(test[,'arrival'], lambda = l), arrival.pred)
+```
