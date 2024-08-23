@@ -61,8 +61,8 @@ As the largest archipelagic nation, Indonesia has a lot of cultures and national
 <a href="https://ibb.co/f4LMs43"><img src="https://i.ibb.co/syzjZyT/int2.png" alt="int2" border="0" /></a>-->
 
 
-### **Conclusion**
-<a href="https://ibb.co/ZGKgCyr"><img src="https://i.ibb.co/q79gwb8/conclusion.png" alt="conclusion" border="0" /></a>
+<!--### **Conclusion**
+<a href="https://ibb.co/ZGKgCyr"><img src="https://i.ibb.co/q79gwb8/conclusion.png" alt="conclusion" border="0" /></a>-->
 
 ### **Recommendation**
 <a href="https://ibb.co/gWLCbpQ"><img src="https://i.ibb.co/YdFG4MJ/recommendation.png" alt="recommendation" border="0" /></a>
