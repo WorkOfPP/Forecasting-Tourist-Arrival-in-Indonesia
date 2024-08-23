@@ -44,21 +44,21 @@ As the largest archipelagic nation, Indonesia has a lot of cultures and national
 <a href="https://ibb.co/R91Nbts"><img src="https://i.ibb.co/s2hCRcN/sarima.png" alt="sarima" border="0" /></a>
 <a href="https://ibb.co/qnhbdQW"><img src="https://i.ibb.co/PYJBNH9/sarima2.png" alt="sarima2" border="0" /></a>
 
-#### **Regression with SARIMA error**
+<!--#### **Regression with SARIMA error**
 <a href="https://ibb.co/8PDYmm5"><img src="https://i.ibb.co/VMWwLLS/sarima-error.png" alt="sarima-error" border="0" /></a>
-<a href="https://ibb.co/VJsHXxC"><img src="https://i.ibb.co/k5t3YJD/sarima-error2.png" alt="sarima-error2" border="0" /></a>
+<a href="https://ibb.co/VJsHXxC"><img src="https://i.ibb.co/k5t3YJD/sarima-error2.png" alt="sarima-error2" border="0" /></a>-->
 
 #### **Vector Auto Regression (VAR)**
 <a href="https://ibb.co/pJXGz4w"><img src="https://i.ibb.co/zGfjRPx/var.png" alt="var" border="0" /></a>
 <a href="https://ibb.co/N7jhR8L"><img src="https://i.ibb.co/t3sfR7b/var2.png" alt="var2" border="0" /></a>
 
-#### **TBATS**
+<!--#### **TBATS**
 <a href="https://ibb.co/Njq2V53"><img src="https://i.ibb.co/4TLRmzf/tbats.png" alt="tbats" border="0" /></a>
 <a href="https://ibb.co/vwHQdFV"><img src="https://i.ibb.co/Bztr6pc/tbats2.png" alt="tbats2" border="0" /></a>
 
 #### **Intervention Analysis**
 <a href="https://ibb.co/XYyVbP9"><img src="https://i.ibb.co/y4hVXCD/int.png" alt="int" border="0" /></a>
-<a href="https://ibb.co/f4LMs43"><img src="https://i.ibb.co/syzjZyT/int2.png" alt="int2" border="0" /></a>
+<a href="https://ibb.co/f4LMs43"><img src="https://i.ibb.co/syzjZyT/int2.png" alt="int2" border="0" /></a>-->
 
 
 ### **Conclusion**
